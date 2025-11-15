@@ -60,20 +60,21 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
 
     const findings: VulnerabilityFinding[] = [];
 
-    parser.visit(ast, {
-        PragmaDirective: (node) => {
-            if (node.name === "solidity" && typeof node.value === "string") {
-                context.pragmaVersion = node.value;
-            }
-        },
-        StateVariableDeclaration: (node) => {
-            node.variables.forEach((variable) => {
-                if (variable.name) {
-                    context.stateVariables.add(variable.name);
+    try {
+        parser.visit(ast, {
+            PragmaDirective: (node) => {
+                if (node.name === "solidity" && typeof node.value === "string") {
+                    context.pragmaVersion = node.value;
                 }
-            });
-        },
-        FunctionDefinition: (node) => {
+            },
+            StateVariableDeclaration: (node) => {
+                node.variables.forEach((variable) => {
+                    if (variable.name) {
+                        context.stateVariables.add(variable.name);
+                    }
+                });
+            },
+            FunctionDefinition: (node) => {
             const fnContext: FunctionFindingContext = {
                 functionNode: node,
                 stateAssignments: [],
@@ -89,7 +90,7 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                             const expression = exprNode.expression as unknown;
                             if (isAssignmentExpression(expression) && isStateAssignment(expression, context.stateVariables)) {
                                 fnContext.stateAssignments.push({
-                                    line: expression.loc?.start.line ?? exprNode.loc?.start.line ?? node.loc?.start.line ?? 0,
+                                    line: expression.loc?.start?.line ?? exprNode.loc?.start?.line ?? node.loc?.start?.line ?? 0,
                                     loc: expression.loc ?? exprNode.loc
                                 });
                             }
@@ -105,7 +106,7 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                                     if (expr.type === "FunctionCall") {
                                         // This is likely address(...).call() - flag it as low-level
                                         fnContext.externalCalls.push({
-                                            line: memberAccessNode.loc?.start.line ?? 0,
+                                            line: memberAccessNode.loc?.start?.line ?? 0,
                                             node: memberAccessNode
                                         });
                                     } else if (expr.type === "Identifier" && "name" in expr) {
@@ -115,7 +116,7 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                                         if (!context.stateVariables.has(varName)) {
                                             // Could be address.call() or similar - flag as low-level
                                             fnContext.externalCalls.push({
-                                                line: memberAccessNode.loc?.start.line ?? 0,
+                                                line: memberAccessNode.loc?.start?.line ?? 0,
                                                 node: memberAccessNode
                                             });
                                         }
@@ -123,14 +124,14 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                                     } else {
                                         // Other expression types - flag as potentially low-level
                                         fnContext.externalCalls.push({
-                                            line: memberAccessNode.loc?.start.line ?? 0,
+                                            line: memberAccessNode.loc?.start?.line ?? 0,
                                             node: memberAccessNode
                                         });
                                     }
                                 } else {
                                     // No expression or unknown type - flag it
                                     fnContext.externalCalls.push({
-                                        line: memberAccessNode.loc?.start.line ?? 0,
+                                        line: memberAccessNode.loc?.start?.line ?? 0,
                                         node: memberAccessNode
                                     });
                                 }
@@ -155,7 +156,19 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
             findings.push(...reentrancyFindings);
             findings.push(...arithmeticFindings);
         }
-    });
+        });
+    } catch (visitError) {
+        // If there's an error during AST traversal, return a parser error
+        console.error("Error during AST traversal:", visitError);
+        return [
+            {
+                name: "Parser Error",
+                line: undefined,
+                codeSnippet: undefined,
+                why: `Analysis error: ${(visitError as Error).message}`
+            }
+        ];
+    }
 
     const merged = mergeDuplicateFindings(findings);
     // Debug: log findings in development
@@ -340,7 +353,7 @@ function formatFinding(
     context: AnalysisContext,
     detail: { why: string }
 ): VulnerabilityFinding {
-    const line = loc?.start.line;
+    const line = loc?.start?.line;
     return {
         name,
         line,
