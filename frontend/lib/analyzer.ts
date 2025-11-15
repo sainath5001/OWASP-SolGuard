@@ -30,9 +30,10 @@ type AssignmentExpression = {
 };
 
 // Low-level calls are direct address.call(), address.delegatecall(), etc.
-// IERC20.transfer() is a high-level interface and should not be flagged
+// IERC20.transfer() and IERC20.transferFrom() are high-level interface methods and should not be flagged
+// Only flag: call, delegatecall, callcode, staticcall, send
+// Do NOT flag: transfer, transferFrom (these are IERC20 interface methods)
 const LOW_LEVEL_CALLS = new Set(["call", "delegatecall", "callcode", "staticcall", "send"]);
-// Note: address.transfer() is low-level, but IERC20.transfer() is high-level
 const ACCESS_CONTROL_MODIFIERS = new Set(["onlyOwner", "onlyRole", "adminOnly", "authorized"]);
 const ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/"]);
 
@@ -156,7 +157,14 @@ function detectAccessControlIssues(
 
     // Skip view and pure functions - they don't modify state and don't need access control
     const stateMutability = functionNode.stateMutability;
-    if (stateMutability === "view" || stateMutability === "pure" || stateMutability === "constant") {
+    // Also check if function has "view" or "pure" keyword in modifiers or other properties
+    const isViewOrPure = stateMutability === "view" || 
+                        stateMutability === "pure" || 
+                        stateMutability === "constant" ||
+                        (functionNode as unknown as { isView?: boolean }).isView === true ||
+                        (functionNode as unknown as { isPure?: boolean }).isPure === true;
+    
+    if (isViewOrPure) {
         return [];
     }
 
@@ -184,7 +192,7 @@ function detectAccessControlIssues(
     // Only flag if function name suggests admin/owner operations (not user interactions)
     const functionName = functionNode.name.toLowerCase();
     const adminKeywords = ["set", "update", "change", "modify", "delete", "remove", "pause", "unpause", "emergency", "admin", "owner"];
-    const userInteractionKeywords = ["stake", "withdraw", "claim", "deposit", "getreward", "earn", "mint", "burn"];
+    const userInteractionKeywords = ["stake", "withdraw", "claim", "deposit", "reward", "earn", "mint", "burn", "transfer"];
     const isLikelyAdminFunction = adminKeywords.some(keyword => functionName.includes(keyword));
     const isUserInteraction = userInteractionKeywords.some(keyword => functionName.includes(keyword));
 
@@ -211,7 +219,7 @@ function detectLowLevelCallIssues(
 ): VulnerabilityFinding[] {
     return fnContext.externalCalls.map((call) =>
         formatFinding("Low-Level Call Usage", call.node.loc, context, {
-            why: "Low-level calls (`call`, `delegatecall`, `send`, `transfer`) bypass Solidity safety checks and require manual handling."
+            why: "Low-level calls (`call`, `delegatecall`, `send`) bypass Solidity safety checks and require manual handling."
         })
     );
 }
