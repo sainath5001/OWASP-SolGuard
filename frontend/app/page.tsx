@@ -26,9 +26,6 @@ type ScanResponse = {
   status: "safe" | "unsafe";
 };
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
-
 export default function Home() {
   const [solidityCode, setSolidityCode] = useState<string>("");
   const [results, setResults] = useState<ScanResponse | null>(null);
@@ -103,7 +100,7 @@ contract ExampleContract {
     setNewlyUnlocked([]);
 
     try {
-      const response = await axios.post<ScanResponse>(`${API_BASE_URL}/scan`, {
+      const response = await axios.post<ScanResponse>("/api/scan", {
         source: solidityCode
       });
       setResults(response.data);
@@ -127,7 +124,7 @@ contract ExampleContract {
         }
       }
     } catch (scanError) {
-      setError("Scan failed. Check the backend server and try again.");
+      setError("Scan failed. Please try again.");
     } finally {
       setIsScanning(false);
     }
