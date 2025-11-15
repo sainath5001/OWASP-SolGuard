@@ -52,16 +52,24 @@ export async function enrichFindingsWithGuidelines(
     });
 
     try {
-        projects = await nest.projects.listProjects({ pageSize: 200 });
+        // Set a timeout for the API call (8 seconds)
+        projects = await Promise.race([
+            nest.projects.listProjects({ pageSize: 200 }),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error("API request timeout after 8 seconds")), 8000)
+            )
+        ]);
     } catch (error) {
+        // Return findings with fallback guidelines if API fails
         return findings.map((finding) => ({
             ...finding,
-            owaspGuideline: `${FALLBACK_GUIDELINES[finding.name]} (OWASP Nest API unavailable: ${(error as Error).message})`
+            owaspGuideline: FALLBACK_GUIDELINES[finding.name]
         }));
     }
 
     const detailCache = new Map<VulnerabilityName, string>();
 
+    // Process findings with individual error handling to prevent one failure from breaking all
     return Promise.all(
         findings.map(async (finding) => {
             if (detailCache.has(finding.name)) {
@@ -71,9 +79,18 @@ export async function enrichFindingsWithGuidelines(
                 };
             }
 
-            const guideline =
-                (await resolveGuidelineFromProjects(nest, projects, finding.name)) ??
-                FALLBACK_GUIDELINES[finding.name];
+            let guideline: string;
+            try {
+                guideline = (await Promise.race([
+                    resolveGuidelineFromProjects(nest, projects, finding.name),
+                    new Promise<string | undefined>((resolve) => 
+                        setTimeout(() => resolve(undefined), 5000)
+                    )
+                ])) ?? FALLBACK_GUIDELINES[finding.name];
+            } catch (error) {
+                // If individual guideline lookup fails, use fallback
+                guideline = FALLBACK_GUIDELINES[finding.name];
+            }
 
             detailCache.set(finding.name, guideline);
 
@@ -109,9 +126,25 @@ async function fetchProjectDetail(nest: Nest, key: string): Promise<ProjectDetai
         return projectDetailCache.get(key)!;
     }
 
-    const detail = await nest.projects.getProject({ projectId: key });
-    projectDetailCache.set(key, detail);
-    return detail;
+    try {
+        // Set timeout for individual project detail fetch (3 seconds)
+        const detail = await Promise.race([
+            nest.projects.getProject({ projectId: key }),
+            new Promise<ProjectDetail>((_, reject) => 
+                setTimeout(() => reject(new Error("Project detail fetch timeout")), 3000)
+            )
+        ]);
+        projectDetailCache.set(key, detail);
+        return detail;
+    } catch (error) {
+        // Return a minimal project detail if fetch fails
+        return {
+            key,
+            name: "",
+            description: "",
+            // Add other required fields with defaults
+        } as ProjectDetail;
+    }
 }
 
 function trimDescription(description: string, maxLength = 320): string {
