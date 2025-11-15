@@ -26,12 +26,6 @@ type ScanResponse = {
   status: "safe" | "unsafe";
 };
 
-<<<<<<< HEAD
-=======
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
->>>>>>> feb694d848f782c054d4ec628119b44ce6a3734a
 export default function Home() {
   const [solidityCode, setSolidityCode] = useState<string>("");
   const [results, setResults] = useState<ScanResponse | null>(null);
@@ -106,11 +100,7 @@ contract ExampleContract {
     setNewlyUnlocked([]);
 
     try {
-<<<<<<< HEAD
       const response = await axios.post<ScanResponse>("/api/scan", {
-=======
-      const response = await axios.post<ScanResponse>(`${API_BASE_URL}/api/scan`, {
->>>>>>> feb694d848f782c054d4ec628119b44ce6a3734a
         source: solidityCode
       });
       setResults(response.data);
