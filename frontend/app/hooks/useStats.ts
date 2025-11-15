@@ -19,7 +19,7 @@ export type Achievement = {
   unlockedAt?: number;
 };
 
-type Stats = {
+export type Stats = {
   totalScans: number;
   totalVulnerabilities: number;
   averageScore: number;

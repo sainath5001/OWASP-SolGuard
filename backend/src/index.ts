@@ -1,3 +1,4 @@
+import "dotenv/config";
 import cors from "cors";
 import express, { Request, Response } from "express";
 import { analyzeSolidity } from "./analyzer.js";

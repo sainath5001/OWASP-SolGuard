@@ -26,6 +26,12 @@ type ScanResponse = {
   status: "safe" | "unsafe";
 };
 
+<<<<<<< HEAD
+=======
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+>>>>>>> feb694d848f782c054d4ec628119b44ce6a3734a
 export default function Home() {
   const [solidityCode, setSolidityCode] = useState<string>("");
   const [results, setResults] = useState<ScanResponse | null>(null);
@@ -100,7 +106,11 @@ contract ExampleContract {
     setNewlyUnlocked([]);
 
     try {
+<<<<<<< HEAD
       const response = await axios.post<ScanResponse>("/api/scan", {
+=======
+      const response = await axios.post<ScanResponse>(`${API_BASE_URL}/api/scan`, {
+>>>>>>> feb694d848f782c054d4ec628119b44ce6a3734a
         source: solidityCode
       });
       setResults(response.data);
@@ -149,7 +159,7 @@ contract ExampleContract {
       y: 0,
       transition: {
         duration: 0.5,
-        ease: "easeOut",
+        ease: [0.4, 0, 0.2, 1] as const,
       },
     },
   };
@@ -161,7 +171,7 @@ contract ExampleContract {
       y: 0,
       transition: {
         duration: 0.6,
-        ease: "easeOut",
+        ease: [0.4, 0, 0.2, 1] as const,
       },
     },
   };
@@ -349,22 +359,22 @@ contract ExampleContract {
             animate={
               isScanning
                 ? {
-                    scale: [1, 1.05, 1],
-                    boxShadow: [
-                      "0 0 0px rgba(14, 165, 233, 0.4)",
-                      "0 0 20px rgba(14, 165, 233, 0.6)",
-                      "0 0 0px rgba(14, 165, 233, 0.4)",
-                    ],
-                  }
+                  scale: [1, 1.05, 1],
+                  boxShadow: [
+                    "0 0 0px rgba(14, 165, 233, 0.4)",
+                    "0 0 20px rgba(14, 165, 233, 0.6)",
+                    "0 0 0px rgba(14, 165, 233, 0.4)",
+                  ],
+                }
                 : {}
             }
             transition={
               isScanning
                 ? {
-                    duration: 1.5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }
+                  duration: 1.5,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }
                 : { duration: 0.2 }
             }
           >
@@ -472,11 +482,10 @@ contract ExampleContract {
                       Scan Status
                     </span>
                     <motion.span
-                      className={`rounded-full px-4 py-1 text-sm font-semibold ${
-                        results.status === "safe"
+                      className={`rounded-full px-4 py-1 text-sm font-semibold ${results.status === "safe"
                           ? "bg-emerald-500/30 text-emerald-700 dark:text-emerald-300"
                           : "bg-red-500/30 text-red-700 dark:text-red-200"
-                      }`}
+                        }`}
                       initial={{ opacity: 0, scale: 0, rotate: -180 }}
                       animate={{ opacity: 1, scale: 1, rotate: 0 }}
                       transition={{
