@@ -3,14 +3,14 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
 }
 
 body {
-  @apply bg-slate-950 text-slate-100;
+  @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
 }
 
 a {
-  @apply text-sky-400 underline underline-offset-2;
+  @apply text-sky-600 underline underline-offset-2 dark:text-sky-400;
 }
 
