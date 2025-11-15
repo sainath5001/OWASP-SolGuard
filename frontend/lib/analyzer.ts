@@ -100,9 +100,15 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                             if (LOW_LEVEL_CALLS.has(memberAccessNode.memberName)) {
                                 const expr = memberAccessNode.expression;
                                 if (expr && "type" in expr) {
-                                    // If expression is Identifier, check if it's a state variable (likely interface)
-                                    // vs a local variable (might be raw address)
-                                    if (expr.type === "Identifier" && "name" in expr) {
+                                    // Check if it's a type conversion like address(msg.sender).call()
+                                    // FunctionCall expressions like address(...) should be flagged
+                                    if (expr.type === "FunctionCall") {
+                                        // This is likely address(...).call() - flag it as low-level
+                                        fnContext.externalCalls.push({
+                                            line: memberAccessNode.loc?.start.line ?? 0,
+                                            node: memberAccessNode
+                                        });
+                                    } else if (expr.type === "Identifier" && "name" in expr) {
                                         const varName = expr.name;
                                         // If it's a state variable, it's likely an interface (IERC20), skip
                                         // If it's not in stateVariables, it might be a raw address, flag it
@@ -121,6 +127,12 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                                             node: memberAccessNode
                                         });
                                     }
+                                } else {
+                                    // No expression or unknown type - flag it
+                                    fnContext.externalCalls.push({
+                                        line: memberAccessNode.loc?.start.line ?? 0,
+                                        node: memberAccessNode
+                                    });
                                 }
                             }
                         },
@@ -133,14 +145,24 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                 );
             }
 
-            findings.push(...detectAccessControlIssues(node, context));
-            findings.push(...detectLowLevelCallIssues(fnContext, context));
-            findings.push(...detectReentrancyIssues(fnContext, context));
-            findings.push(...detectArithmeticIssues(fnContext, context));
+            const accessControlFindings = detectAccessControlIssues(node, context);
+            const lowLevelCallFindings = detectLowLevelCallIssues(fnContext, context);
+            const reentrancyFindings = detectReentrancyIssues(fnContext, context);
+            const arithmeticFindings = detectArithmeticIssues(fnContext, context);
+            
+            findings.push(...accessControlFindings);
+            findings.push(...lowLevelCallFindings);
+            findings.push(...reentrancyFindings);
+            findings.push(...arithmeticFindings);
         }
     });
 
-    return mergeDuplicateFindings(findings);
+    const merged = mergeDuplicateFindings(findings);
+    // Debug: log findings in development
+    if (process.env.NODE_ENV === "development" && merged.length > 0) {
+        console.log(`[Analyzer] Found ${merged.length} vulnerabilities`);
+    }
+    return merged;
 }
 
 function detectAccessControlIssues(
@@ -196,8 +218,9 @@ function detectAccessControlIssues(
     const isLikelyAdminFunction = adminKeywords.some(keyword => functionName.includes(keyword));
     const isUserInteraction = userInteractionKeywords.some(keyword => functionName.includes(keyword));
 
-    // Skip user-facing functions - they should be public
-    if (isUserInteraction) {
+    // Skip user-facing functions - they should be public (but note: some might still need access control)
+    // For now, we'll be conservative and only flag obvious admin functions
+    if (isUserInteraction && !isLikelyAdminFunction) {
         return [];
     }
 
