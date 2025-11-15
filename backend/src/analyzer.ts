@@ -29,7 +29,10 @@ type AssignmentExpression = {
     loc?: Location;
 };
 
-const LOW_LEVEL_CALLS = new Set(["call", "delegatecall", "callcode", "staticcall", "send", "transfer"]);
+// Low-level calls are direct address.call(), address.delegatecall(), etc.
+// IERC20.transfer() is a high-level interface and should not be flagged
+const LOW_LEVEL_CALLS = new Set(["call", "delegatecall", "callcode", "staticcall", "send"]);
+// Note: address.transfer() is low-level, but IERC20.transfer() is high-level
 const ACCESS_CONTROL_MODIFIERS = new Set(["onlyOwner", "onlyRole", "adminOnly", "authorized"]);
 const ARITHMETIC_OPERATORS = new Set(["+", "-", "*", "/"]);
 
@@ -91,11 +94,33 @@ export function analyzeSolidity(source: string): VulnerabilityFinding[] {
                             }
                         },
                         MemberAccess: (memberAccessNode: MemberAccess) => {
+                            // Only flag low-level calls, not IERC20 interface methods
+                            // Check if it's a direct address member access (low-level) vs interface method
                             if (LOW_LEVEL_CALLS.has(memberAccessNode.memberName)) {
-                                fnContext.externalCalls.push({
-                                    line: memberAccessNode.loc?.start.line ?? 0,
-                                    node: memberAccessNode
-                                });
+                                const expr = memberAccessNode.expression;
+                                if (expr && "type" in expr) {
+                                    // If expression is Identifier, check if it's a state variable (likely interface)
+                                    // vs a local variable (might be raw address)
+                                    if (expr.type === "Identifier" && "name" in expr) {
+                                        const varName = expr.name;
+                                        // If it's a state variable, it's likely an interface (IERC20), skip
+                                        // If it's not in stateVariables, it might be a raw address, flag it
+                                        if (!context.stateVariables.has(varName)) {
+                                            // Could be address.call() or similar - flag as low-level
+                                            fnContext.externalCalls.push({
+                                                line: memberAccessNode.loc?.start.line ?? 0,
+                                                node: memberAccessNode
+                                            });
+                                        }
+                                        // If it IS a state variable (like s_stakingToken), it's IERC20 - skip
+                                    } else {
+                                        // Other expression types - flag as potentially low-level
+                                        fnContext.externalCalls.push({
+                                            line: memberAccessNode.loc?.start.line ?? 0,
+                                            node: memberAccessNode
+                                        });
+                                    }
+                                }
                             }
                         },
                         BinaryOperation: (binaryOperationNode: BinaryOperation) => {
@@ -129,6 +154,12 @@ function detectAccessControlIssues(
         return [];
     }
 
+    // Skip view and pure functions - they don't modify state and don't need access control
+    const stateMutability = functionNode.stateMutability;
+    if (stateMutability === "view" || stateMutability === "pure" || stateMutability === "constant") {
+        return [];
+    }
+
     const isPublicFacing =
         functionNode.visibility === "public" ||
         functionNode.visibility === "external" ||
@@ -147,9 +178,29 @@ function detectAccessControlIssues(
         return [];
     }
 
+    // Check if function modifies state - if it doesn't have a body or only reads, skip
+    // This is a heuristic: functions that modify state typically need access control
+    // User-facing functions (like stake, withdrawStakedTokens, getReward) are intentionally public
+    // Only flag if function name suggests admin/owner operations (not user interactions)
+    const functionName = functionNode.name.toLowerCase();
+    const adminKeywords = ["set", "update", "change", "modify", "delete", "remove", "pause", "unpause", "emergency", "admin", "owner"];
+    const userInteractionKeywords = ["stake", "withdraw", "claim", "deposit", "getreward", "earn", "mint", "burn"];
+    const isLikelyAdminFunction = adminKeywords.some(keyword => functionName.includes(keyword));
+    const isUserInteraction = userInteractionKeywords.some(keyword => functionName.includes(keyword));
+
+    // Skip user-facing functions - they should be public
+    if (isUserInteraction) {
+        return [];
+    }
+
+    // Only flag functions that look like admin functions
+    if (!isLikelyAdminFunction) {
+        return [];
+    }
+
     return [
         formatFinding("Missing Access Control", functionNode.loc, context, {
-            why: "Public or external function lacks `onlyOwner`/`onlyRole` style access control checks."
+            why: "Public or external function that may modify critical state lacks `onlyOwner`/`onlyRole` style access control checks."
         })
     ];
 }
